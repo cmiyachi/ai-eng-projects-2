@@ -3,9 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from langchain_community.chat_models import ChatOllama
-from langchain.agents import initialize_agent, Tool, AgentType
-from ddgs import DDGS
+from langchain_ollama import ChatOllama
+from langgraph.prebuilt import create_react_agent
+from duckduckgo_search import DDGS
 
 from langchain.tools import tool
 
@@ -33,14 +33,11 @@ def web_search(query: str) -> str:
 
 # ----------------------------AGENT------------------------------------
 
-llm = ChatOllama(model="llama3", temperature=0)
+llm = ChatOllama(model="llama3.2:3b", temperature=0)
 tools = [web_search]
-agent = initialize_agent(
-    tools,
-    llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True,
-)
+
+# Create the ReAct agent using LangGraph
+agent = create_react_agent(llm, tools)
 # ----------------------------------FASTAPI------------------------------
 
 app = FastAPI()
@@ -58,5 +55,8 @@ class AskRequest(BaseModel):
 @app.post("/ask")
 async def ask(req: AskRequest):
     """Proxy the question to the LangChain agent and return its answer."""
-    result = agent.invoke({"input": req.question})
-    return {"answer": result["output"]}
+    # LangGraph agents use "messages" key and return messages
+    result = agent.invoke({"messages": [("user", req.question)]})
+    # Extract the last message content as the answer
+    last_message = result["messages"][-1]
+    return {"answer": last_message.content}
